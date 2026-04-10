@@ -100,6 +100,140 @@ class GroqClient:
 
         return {"entities": normalized_entities}
 
+    def _normalize_query_plan(self, value: object, default_tier: str = "variant") -> dict | None:
+        if isinstance(value, str):
+            query = value.strip()
+            if not query:
+                return None
+            return {
+                "query": query,
+                "reason": "",
+                "tier": default_tier,
+                "covered_constraints": [],
+            }
+
+        if not isinstance(value, dict):
+            return None
+
+        query = str(value.get("query") or "").strip()
+        if not query:
+            return None
+
+        covered_constraints = value.get("covered_constraints", [])
+        if not isinstance(covered_constraints, list):
+            covered_constraints = []
+
+        tier = str(value.get("tier") or default_tier).strip().lower()
+        if tier not in {"anchor", "variant", "recall"}:
+            tier = default_tier
+
+        return {
+            "query": query,
+            "reason": str(value.get("reason") or "").strip(),
+            "tier": tier,
+            "covered_constraints": [
+                str(item).strip()
+                for item in covered_constraints
+                if str(item).strip()
+            ],
+        }
+
+    def _normalize_constraint(self, value: object, priority: str) -> dict | None:
+        if not isinstance(value, dict):
+            return None
+
+        field = str(value.get("field") or value.get("name") or "").strip()
+        raw_value = value.get("value")
+        constraint_value = "" if raw_value is None else str(raw_value).strip()
+        if not field or not constraint_value:
+            return None
+
+        aliases = value.get("aliases", [])
+        if not isinstance(aliases, list):
+            aliases = []
+
+        operator = str(value.get("operator") or "eq").strip().lower()
+        if operator not in {"eq", "neq", "gt", "gte", "lt", "lte", "contains", "in"}:
+            operator = "eq"
+
+        out_priority = str(value.get("priority") or priority).strip().lower()
+        if out_priority not in {"hard", "soft"}:
+            out_priority = priority
+
+        return {
+            "field": field,
+            "operator": operator,
+            "value": constraint_value,
+            "normalized_value": str(value.get("normalized_value") or "").strip(),
+            "priority": out_priority,
+            "confidence": float(value.get("confidence", 1.0) or 0.0),
+            "aliases": [str(alias).strip() for alias in aliases if str(alias).strip()],
+        }
+
+    def _normalize_topic_plan(self, data: dict) -> dict:
+        """
+        Repairs common LLM mistakes for TopicPlan.
+
+        Accepts partial planner outputs and normalizes query/constraint objects.
+        """
+        if not isinstance(data, dict):
+            return {
+                "normalized_topic": "",
+                "entity_type": "",
+                "columns": [],
+                "hard_constraints": [],
+                "soft_constraints": [],
+                "search_queries": [],
+            }
+
+        queries = data.get("search_queries") or data.get("queries") or []
+        if not isinstance(queries, list):
+            queries = []
+
+        hard_constraints = data.get("hard_constraints") or []
+        soft_constraints = data.get("soft_constraints") or []
+        if not isinstance(hard_constraints, list):
+            hard_constraints = []
+        if not isinstance(soft_constraints, list):
+            soft_constraints = []
+
+        if not hard_constraints and not soft_constraints:
+            combined_constraints = data.get("constraints", [])
+            if isinstance(combined_constraints, list):
+                for item in combined_constraints:
+                    if not isinstance(item, dict):
+                        continue
+                    priority = str(item.get("priority") or "hard").strip().lower()
+                    if priority == "soft":
+                        soft_constraints.append(item)
+                    else:
+                        hard_constraints.append(item)
+
+        normalized_queries = [
+            normalized
+            for item in queries
+            if (normalized := self._normalize_query_plan(item, default_tier="variant")) is not None
+        ]
+        normalized_hard_constraints = [
+            normalized
+            for item in hard_constraints
+            if (normalized := self._normalize_constraint(item, priority="hard")) is not None
+        ]
+        normalized_soft_constraints = [
+            normalized
+            for item in soft_constraints
+            if (normalized := self._normalize_constraint(item, priority="soft")) is not None
+        ]
+
+        return {
+            "normalized_topic": str(data.get("normalized_topic") or data.get("topic") or "").strip(),
+            "entity_type": str(data.get("entity_type") or "").strip(),
+            "columns": data.get("columns", []) or [],
+            "hard_constraints": normalized_hard_constraints,
+            "soft_constraints": normalized_soft_constraints,
+            "search_queries": normalized_queries,
+        }
+
     def _normalize_deeper_query_plan(self, data: dict) -> dict:
         """
         Repairs common LLM mistakes for DeeperQueryPlan.
@@ -109,12 +243,24 @@ class GroqClient:
         - ["query1", "query2"]
         """
         if isinstance(data, list):
-            return {"search_queries": [str(x) for x in data if str(x).strip()]}
+            return {
+                "search_queries": [
+                    normalized
+                    for item in data
+                    if (normalized := self._normalize_query_plan(item, default_tier="anchor")) is not None
+                ]
+            }
 
         if isinstance(data, dict):
             queries = data.get("search_queries", [])
             if isinstance(queries, list):
-                return {"search_queries": [str(x) for x in queries if str(x).strip()]}
+                return {
+                    "search_queries": [
+                        normalized
+                        for item in queries
+                        if (normalized := self._normalize_query_plan(item, default_tier="anchor")) is not None
+                    ]
+                }
 
         return {"search_queries": []}
 
@@ -130,12 +276,38 @@ class GroqClient:
                 {
                     "entity_type": getattr(result, "entity_type", ""),
                     "columns": [column.name for column in getattr(result, "columns", [])],
-                    "search_queries": [query.query for query in getattr(result, "search_queries", [])],
+                    "hard_constraints": [
+                        f"{constraint.field}:{constraint.operator}:{constraint.value}"
+                        for constraint in getattr(result, "hard_constraints", [])
+                    ],
+                    "soft_constraints": [
+                        f"{constraint.field}:{constraint.operator}:{constraint.value}"
+                        for constraint in getattr(result, "soft_constraints", [])
+                    ],
+                    "search_queries": [
+                        {
+                            "query": query.query,
+                            "tier": query.tier,
+                            "covered_constraints": query.covered_constraints,
+                        }
+                        for query in getattr(result, "search_queries", [])
+                    ],
                 }
             )
 
         if schema_name == "DeeperQueryPlan":
-            return self._preview({"search_queries": getattr(result, "search_queries", [])})
+            return self._preview(
+                {
+                    "search_queries": [
+                        {
+                            "query": query.query,
+                            "tier": query.tier,
+                            "covered_constraints": query.covered_constraints,
+                        }
+                        for query in getattr(result, "search_queries", [])
+                    ]
+                }
+            )
 
         if schema_name == "ExtractionBatch":
             entities = []
@@ -151,17 +323,7 @@ class GroqClient:
 
         return self._preview(result.model_dump())
 
-    async def complete_json(self, system_prompt: str, user_prompt: str, schema: type[T]) -> T:
-        """
-        Main entry point for all LLM JSON calls.
-
-        Steps:
-        1. limit concurrent LLM calls
-        2. request JSON output
-        3. parse returned JSON
-        4. normalize common schema drift
-        5. validate with Pydantic
-        """
+    async def _create_json_completion(self, system_prompt: str, user_prompt: str) -> dict:
         async with self.sem:
             response = await asyncio.to_thread(
                 self.client.chat.completions.create,
@@ -175,19 +337,57 @@ class GroqClient:
             )
 
         content = response.choices[0].message.content or "{}"
+        return json.loads(content)
 
-        try:
-            data = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise ValueError("LLM returned invalid JSON") from exc
+    async def complete_json(self, system_prompt: str, user_prompt: str, schema: type[T]) -> T:
+        """
+        Main entry point for all LLM JSON calls.
 
-        if schema.__name__ == "ExtractionBatch":
-            data = self._normalize_extraction_batch(data)
-        elif schema.__name__ == "DeeperQueryPlan":
-            data = self._normalize_deeper_query_plan(data)
+        Steps:
+        1. limit concurrent LLM calls
+        2. request JSON output
+        3. parse returned JSON
+        4. normalize common schema drift
+        5. validate with Pydantic
+        6. retry once with stricter instructions if JSON/schema fails
+        """
+        last_error: Exception | None = None
 
-        try:
-            validated = schema.model_validate(data)
-        except ValidationError:
-            raise
-        return validated
+        for attempt in range(2):
+            try:
+                data = await self._create_json_completion(system_prompt, user_prompt)
+            except json.JSONDecodeError as exc:
+                last_error = ValueError("LLM returned invalid JSON")
+                if attempt == 0:
+                    user_prompt = (
+                        user_prompt
+                        + "\n\nIMPORTANT: Return ONLY valid JSON that matches the required schema exactly. "
+                        "Do not include markdown, comments, or trailing text."
+                    )
+                    continue
+                raise ValueError("LLM returned invalid JSON") from exc
+
+            if schema.__name__ == "TopicPlan":
+                data = self._normalize_topic_plan(data)
+            elif schema.__name__ == "ExtractionBatch":
+                data = self._normalize_extraction_batch(data)
+            elif schema.__name__ == "DeeperQueryPlan":
+                data = self._normalize_deeper_query_plan(data)
+
+            try:
+                validated = schema.model_validate(data)
+                return validated
+            except ValidationError as exc:
+                last_error = exc
+                if attempt == 0:
+                    user_prompt = (
+                        user_prompt
+                        + "\n\nIMPORTANT: Return ONLY valid JSON that matches the required schema exactly. "
+                        "Do not omit required keys. Do not flatten nested objects."
+                    )
+                    continue
+                raise
+
+        if last_error is not None:
+            raise last_error
+        raise ValueError("LLM completion failed unexpectedly")
