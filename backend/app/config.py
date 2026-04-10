@@ -14,13 +14,13 @@ class Settings:
     FETCH_TIMEOUT_SECONDS: float = 10.0
     FETCH_CONCURRENCY: int = 8
     LLM_CONCURRENCY: int = 3
-    MAX_PAGE_CHARS: int = 12000
+    MAX_PAGE_CHARS: int = 8000
 
     MAX_BASE_QUERIES: int = 4
-    MAX_DEEPER_QUERIES: int = 6
-    DEEPER_SEARCH_ROUNDS: int = 1
+    MAX_DEEPER_QUERIES: int = 3
+    DEEPER_SEARCH_ROUNDS: int = 0
 
-    MAX_PAGES_FOR_EXTRACTION: int = 8
+    MAX_PAGES_FOR_EXTRACTION: int = 6
     MAX_FINAL_ROWS: int = 10
 
 
