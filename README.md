@@ -9,10 +9,6 @@ Agentic Search is a full-stack demo that turns an open-ended topic into a struct
 
 <img width="1179" height="578" alt="Screenshot 2026-04-10 at 3 01 26 PM" src="https://github.com/user-attachments/assets/1ce86cdd-a7e7-4cc0-86c5-9cdb40559645" />
 
-## Architecture
-
-<img width="1439" height="1646" alt="image" src="https://github.com/user-attachments/assets/510bb013-c2f4-4228-a447-f9c5c9988a31" />
-
 ### Tech stack
 
 <p align="left">
@@ -34,6 +30,11 @@ Agentic Search is a full-stack demo that turns an open-ended topic into a struct
   <img src="https://img.shields.io/badge/Pydantic-red?logo=pydantic&logoColor=white" alt="Pydantic" />
   <img src="https://img.shields.io/badge/Render-46E3B7?logo=render&logoColor=white" alt="Render" />
 </p>
+
+
+## Architecture
+
+<img width="1439" height="1646" alt="image" src="https://github.com/user-attachments/assets/510bb013-c2f4-4228-a447-f9c5c9988a31" />
 
 ## Components
 
