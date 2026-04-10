@@ -1,12 +1,139 @@
-# Agentic Search
+# Agentic Search 
 
-Agentic Search is a full-stack demo that turns an open-ended user topic into a structured comparison table. The system plans search queries, retrieves public web pages, extracts entity-level fields with evidence, merges duplicates, and returns ranked rows through a simple web UI.
+Agentic Search is a full-stack demo that turns an open-ended topic into a structured comparison table. The system plans search queries, retrieves public web pages, extracts entity-level fields with evidence, merges duplicates, and returns ranked results in a simple UI. The latest version adds **constraint-aware query planning** and a **hybrid reranker** so queries with important filters such as geography, dates, numeric thresholds, or exclusions are handled more reliably.
 
-## What this repository contains
+## Demo
+
+- **Frontend:** https://agentic-search-ciir-frontend.vercel.app/
+- **Backend:** https://agentic-search-backend-hg.onrender.com/
+
+<img width="1179" height="578" alt="Screenshot 2026-04-10 at 3 01 26 PM" src="https://github.com/user-attachments/assets/1ce86cdd-a7e7-4cc0-86c5-9cdb40559645" />
+
+## Quick Start
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/<your-username>/agentic-search-ciir.git
+cd agentic-search-ciir
+
+# 2. Start the backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+
+3. Add your API key in backend/.env
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+FRONTEND_URL=http://localhost:3000
+
+# 4. Run the backend
+uvicorn main:app --reload
+
+# 5. In a new terminal, start the frontend
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+### Sample queries
+
+- `AI startups in the US with funding > 10M`
+- `open source vector databases under 2GB RAM`
+- `robotics companies in Europe with series B funding` 
+
+## Architecture
+
+<img width="1439" height="1646" alt="image" src="https://github.com/user-attachments/assets/510bb013-c2f4-4228-a447-f9c5c9988a31" />
+
+
+
+### Tech stack
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white" alt="Next.js" />
+  <img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB" alt="React" />
+  <img src="https://img.shields.io/badge/Tailwind%20CSS-38B2AC?logo=tailwindcss&logoColor=white" alt="Tailwind CSS" />
+  <img src="https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white" alt="Docker" />
+  <img src="https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white" alt="Vercel" />
+</p>
+
+<p align="left">
+  <img src="https://img.shields.io/badge/Groq-black" alt="Groq" />
+  <img src="https://img.shields.io/badge/DDGS-blue" alt="DDGS" />
+  <img src="https://img.shields.io/badge/httpx-green" alt="httpx" />
+  <img src="https://img.shields.io/badge/BeautifulSoup-yellowgreen" alt="BeautifulSoup" />
+  <img src="https://img.shields.io/badge/Pydantic-red?logo=pydantic&logoColor=white" alt="Pydantic" />
+  <img src="https://img.shields.io/badge/Render-46E3B7?logo=render&logoColor=white" alt="Render" />
+</p>
+
+## Components
+
+### 1. Planner LLM
+
+Parses the user query into a retrieval plan with:
+
+- normalized topic
+- inferred entity type
+- dynamic schema
+- initial search queries
+- **hard constraints** and **soft constraints**
+
+This separates core retrieval intent from filters such as location, time, and numeric thresholds, so later stages do not treat the query as a flat bag of words.
+
+### 2. Search Client
+
+Executes multiple planned queries with DDGS to improve recall across different query formulations. Candidate hits are aggregated and URL-deduplicated before fetch to avoid redundant downstream processing.
+
+### 3. Hybrid Reranker
+
+Performs first-stage ranking over search hits before page fetch using:
+
+- **BM25-style lexical matching** on title and snippet
+- **query-plan priors** from stronger query variants
+- **constraint-aware scoring** for hard and soft filters
+- **source priors** for cleaner vs noisier domains
+- **SERP rank prior** as a weak additional signal
+
+This improves early precision by promoting hits that match both topical relevance and explicit query constraints.
+
+### 4. Fetcher
+
+Fetches the top-ranked pages concurrently, removes boilerplate, and truncates content to a bounded context window for extraction.
+
+### 5. Extractor LLM
+
+Maps each fetched page into structured entity-field outputs. Each extracted field is paired with supporting evidence, making the final table grounded and inspectable.
+
+### 6. Merge and Standardize
+
+Resolves cross-page duplicates using normalized names and fuzzy matching, then consolidates field values and evidence into a single entity-centric representation.
+
+### 7. Deeper Query Planner
+
+Generates targeted follow-up queries when important fields remain missing. These follow-up queries aim to improve coverage while still preserving important user constraints.
+
+### 8. Final Result
+
+Ranks merged entities using:
+
+- field coverage
+- extraction confidence
+- topical alignment
+- constraint alignment
+
+This pushes more complete and better-matched entities higher in the final output.
+
+## Repo Structure
 
 ```text
 agentic-search-github-ready/
-├── backend/                  # FastAPI API and agentic pipeline
+├── backend/                  # FastAPI API and search pipeline
 │   ├── app/
 │   ├── main.py
 │   ├── requirements.txt
@@ -15,208 +142,78 @@ agentic-search-github-ready/
 │   ├── src/app/
 │   ├── package.json
 │   └── .env.example
-├── render.yaml               # Optional Render deployment blueprint for backend
+├── render.yaml               # Optional Render deployment blueprint
 ├── .gitignore
 └── README.md
 ```
 
-## Approach
+## API Reference
 
-The system follows a staged retrieval and extraction pipeline rather than relying on a single prompt.
+### `GET /health`
+Returns API health status.
 
-1. **Topic planning**
-   - The planner LLM converts the user topic into a normalized topic, an entity type, a dynamic schema, and a set of initial search queries.
-   - This avoids hardcoding domain-specific columns.
-
-2. **Broad retrieval**
-   - The backend issues multiple web queries with DDGS.
-   - Results are URL-normalized and deduplicated before fetch.
-
-3. **Lightweight ranking before fetch**
-   - Search hits are re-ranked using lexical overlap, result position, and simple domain priors.
-   - This keeps the expensive extraction stage focused on stronger pages.
-
-4. **Page fetch and cleanup**
-   - Pages are fetched concurrently with `httpx`.
-   - Boilerplate HTML is stripped with BeautifulSoup and the text is truncated to a safe budget.
-
-5. **Structured extraction with provenance**
-   - The extractor LLM converts each page into typed entities and cells.
-   - Each cell includes confidence and source references so the final table remains grounded.
-
-6. **Merge and standardization**
-   - Entities are merged using normalized names plus fuzzy matching.
-   - Cell values are cleaned and conflicting evidence is reduced.
-
-7. **Coverage-driven deeper search**
-   - If key columns remain empty, the system generates targeted follow-up queries.
-   - This is meant to improve coverage without blindly repeating the initial search.
-
-## Design decisions
-
-### Dynamic schema instead of hardcoded columns
-The core goal is to support generic research tasks, not only restaurants or one vertical. The planner therefore chooses columns at runtime.
-
-### Separate retrieval, extraction, and merge stages
-These stages are split across modules so that ranking, extraction quality, and entity resolution can be tuned independently.
-
-### Typed validation around LLM output
-Pydantic models act as a contract between the LLM and the rest of the system. This reduces brittle downstream handling when the model returns slightly malformed JSON.
-
-### Evidence-carrying cells
-Every non-empty value can point to a supporting URL. This makes the output easier to audit and demo.
-
-### Budgeted multi-step search
-The code intentionally limits query count, page count, and text size so the demo remains usable on modest hardware and cheaper API usage.
-
-## Known limitations
-
-- The ranking heuristics are simple and not learned.
-- Entity deduplication is name-based and can still merge near-matches incorrectly or fail on aliases.
-- The system depends on public web pages, so page quality and anti-bot restrictions affect results.
-- Extraction quality depends on the LLM and can still produce sparse or partially incorrect fields.
-- The current UI is a demo table, not a full analyst workflow with editing, export, or result inspection panes.
-- CORS in the backend is configured mainly for local development. For deployment, set the exact frontend URL.
-
-## Setup instructions
-
-### 1) Clone the repo
-
-```bash
-git clone https://github.com/<your-username>/agentic-search.git
-cd agentic-search
+**Response**
+```json
+{
+  "status": "ok"
+}
 ```
 
-### 2) Start the backend
+### `POST /search`
+Runs the search pipeline and returns structured results.
 
-```bash
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
+**Request**
+```json
+{
+  "topic": "AI startups in the US with funding > 10M"
+}
 ```
 
-Add your Groq key to `backend/.env`:
-
-```env
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
-FRONTEND_URL=http://localhost:3000
+**Response**
+```json
+{
+  "topic": "AI startups in the US with funding > 10M",
+  "entity_type": "startup",
+  "columns": [
+    {
+      "name": "entity",
+      "description": "Canonical entity name",
+      "importance": "high"
+    }
+  ],
+  "rows": [
+    {
+      "entity_id": "startup|example-ai",
+      "entity": "Example AI",
+      "cells": {
+        "location": {
+          "value": "United States",
+          "confidence": 0.92,
+          "sources": [
+            {
+              "url": "https://example.com",
+              "title": "Example AI",
+              "excerpt": "Example AI is a US-based startup..."
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "diagnostics": {}
+}
 ```
 
-Then run:
+## Future Work
 
-```bash
-uvicorn main:app --reload
-```
+- **Add a learned reranker after first-stage retrieval.**  
+  Add a cross-encoder or learning-to-rank step on the top candidates after BM25 pre-ranking. This should improve precision by scoring full query-document relevance instead of relying mostly on lexical match and heuristic boosts.
 
-### 3) Start the frontend
+- **Improve constraint parsing for exclusions, time filters, and numeric conditions.**  
+  Better handle filters such as `not`, date ranges, before/after conditions, and numeric thresholds or intervals. This would make query planning and reranking align more closely with the actual user intent.
 
-In a new terminal:
+- **Strengthen entity resolution beyond name-based fuzzy matching.**  
+  Use additional signals such as source domain, location, company attributes, and supporting evidence when merging entities. This would reduce both false merges and missed merges across aliases or naming variations.
 
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-## GitHub push steps
-
-### Option A: GitHub website + terminal
-
-1. Create a new empty public repository on GitHub.
-2. Do not add a README, `.gitignore`, or license during creation if you are pushing this folder as-is.
-3. In your terminal:
-
-```bash
-cd agentic-search-github-ready
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/<your-username>/<repo-name>.git
-git push -u origin main
-```
-
-GitHub documents both creating repositories and pushing existing local code from the command line. citeturn278717search2turn278717search17turn278717search20
-
-### Option B: GitHub CLI
-
-```bash
-cd agentic-search-github-ready
-git init
-git add .
-git commit -m "Initial commit"
-gh repo create <repo-name> --public --source=. --remote=origin --push
-```
-
-GitHub’s CLI supports creating a repository and pushing an existing local project directly. citeturn278717search2turn278717search5
-
-## What “URL with a live demo on a free tier cloud instance” means
-
-It means your submission includes a public link that the reviewer can open in a browser and try without running the code locally.
-
-Examples:
-- a frontend URL like `https://your-app.vercel.app`
-- a backend health endpoint like `https://your-api.onrender.com/health`
-
-For this project, the most practical path is:
-- **Frontend on Vercel** using the free hobby tier for Next.js
-- **Backend on Render** using a free Python web service
-
-Render supports free web services for Python apps and documents the standard FastAPI deployment flow with a build command and a `uvicorn` start command. citeturn278717search0turn278717search6turn278717search9turn278717search15
-
-## How to create a live demo
-
-### Backend on Render
-
-1. Push this repository to GitHub.
-2. Sign in to Render.
-3. Click **New +** → **Web Service**.
-4. Connect your GitHub repo.
-5. Select the repo and set:
-   - **Root Directory:** `backend`
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-6. Add environment variables:
-   - `GROQ_API_KEY`
-   - `GROQ_MODEL`
-   - `FRONTEND_URL` later, after your frontend URL is known
-7. Deploy.
-8. Test `https://<your-render-service>.onrender.com/health`
-
-These settings match Render’s FastAPI deployment documentation. citeturn278717search0turn278717search15
-
-### Frontend on Vercel
-
-1. Import the same GitHub repo into Vercel.
-2. Set the **Root Directory** to `frontend`.
-3. Add the environment variable:
-   - `NEXT_PUBLIC_API_URL=https://<your-render-service>.onrender.com`
-4. Deploy.
-5. Copy the Vercel URL.
-6. Go back to Render and set `FRONTEND_URL=https://<your-vercel-app>.vercel.app` if you want strict CORS.
-
-## Recommended submission checklist
-
-- Remove all real secrets from `.env` files before pushing.
-- Keep only `.env.example` files in GitHub.
-- Make the repository public.
-- Add a short demo section to this README once deployed:
-
-```md
-## Live demo
-- Frontend: https://<your-vercel-url>
-- Backend health: https://<your-render-url>/health
-```
-
-- Verify the frontend can call the deployed backend.
-- Add 2 to 3 example queries in the README for reviewers.
-
-## Security note
-
-The original zip contained local environment files and generated artifacts. Those should stay out of source control. This cleaned version keeps only example environment files and excludes build folders, virtual environments, and local caches.
+- **Add caching and observability across the pipeline.**  
+  Cache query plans, search results, fetched pages, and extraction outputs where appropriate, and track metrics for retrieval quality, latency, and extraction coverage. This would improve efficiency and make debugging easier.
