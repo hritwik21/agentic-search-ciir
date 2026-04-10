@@ -34,11 +34,6 @@ class SearchRequest(BaseModel):
     topic: str = Field(..., min_length=2, validation_alias=AliasChoices("topic", "query", "text", "q"))
 
 
-@app.get("/")
-def index() -> FileResponse:
-    return FileResponse(Path("frontend/index.html"))
-
-
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
