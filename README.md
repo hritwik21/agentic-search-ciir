@@ -9,46 +9,9 @@ Agentic Search is a full-stack demo that turns an open-ended topic into a struct
 
 <img width="1179" height="578" alt="Screenshot 2026-04-10 at 3 01 26 PM" src="https://github.com/user-attachments/assets/1ce86cdd-a7e7-4cc0-86c5-9cdb40559645" />
 
-## Quick Start
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/<your-username>/agentic-search-ciir.git
-cd agentic-search-ciir
-
-# 2. Start the backend
-cd backend
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-
-3. Add your API key in backend/.env
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
-FRONTEND_URL=http://localhost:3000
-
-# 4. Run the backend
-uvicorn main:app --reload
-
-# 5. In a new terminal, start the frontend
-cd frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
-
-### Sample queries
-
-- `AI startups in the US with funding > 10M`
-- `open source vector databases under 2GB RAM`
-- `robotics companies in Europe with series B funding` 
-
 ## Architecture
 
 <img width="1439" height="1646" alt="image" src="https://github.com/user-attachments/assets/510bb013-c2f4-4228-a447-f9c5c9988a31" />
-
-
 
 ### Tech stack
 
@@ -217,3 +180,38 @@ Runs the search pipeline and returns structured results.
 
 - **Add caching and observability across the pipeline.**  
   Cache query plans, search results, fetched pages, and extraction outputs where appropriate, and track metrics for retrieval quality, latency, and extraction coverage. This would improve efficiency and make debugging easier.
+
+## Setup Instructions
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/<your-username>/agentic-search-ciir.git
+cd agentic-search-ciir
+
+# 2. Start the backend
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+
+3. Add your API key in backend/.env
+GROQ_API_KEY=your_groq_api_key
+GROQ_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+FRONTEND_URL=http://localhost:3000
+
+# 4. Run the backend
+uvicorn main:app --reload
+
+# 5. In a new terminal, start the frontend
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+### Sample queries
+
+- `AI startups in the US with funding > 10M`
+- `open source vector databases under 2GB RAM`
+- `robotics companies in Europe with series B funding` 
