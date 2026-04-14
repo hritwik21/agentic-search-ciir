@@ -216,3 +216,40 @@ npm run dev
 - `AI startups in the US with funding > 10M`
 - `open source vector databases under 2GB RAM`
 - `robotics companies in Europe with series B funding` 
+
+## How does the system handle constraints?
+
+Instead of treating user input as a flat bag-of-words string, constraint handling begins strictly at the **query understanding stage**. The Planner LLM parses the natural language input and decomposes it into a structured **retrieval plan** containing:
+
+* **Core topic** (the primary information need)
+* **Inferred entity type** (the target document or item class)
+* **Dynamic output schema**
+* **Hard constraints** (mandatory matching criteria)
+* **Soft constraints** (preferential ranking signals)
+* **Initial search queries** (query expansion)
+
+For example, given a query like `"AI startups in the US with funding > 10M"`, the planner extracts:
+
+* `AI startups` → Core topic
+* `US` → Hard textual constraint (Location)
+* `> 10M` → Hard numeric constraint (Funding)
+
+Each constraint is explicitly formalized using structured fields: `field`, `operator`, `value`, `normalized_value`, `aliases`, and `priority` (`hard` vs. `soft`). This structured representation allows the pipeline to reason about constraints logically, rather than relying on loose keyword matching. 
+
+### Pipeline Propagation
+
+This strict constraint architecture is propagated throughout the entire IR pipeline:
+
+* **Query Planning:** The Planner LLM maps extracted constraints to specific retrieval intents, tracking which expanded queries are responsible for preserving which constraints.
+* **Schema Construction:** Any field relevant to a constraint is dynamically injected into the target output schema. This ensures the system can explicitly extract, verify, and rank against these specific dimensions later.
+* **Retrieval & Initial Reranking:** Candidate documents are scored not only on lexical and semantic relevance but also on the presence of constraint evidence in their metadata or snippets. If a candidate is retrieved by a constraint-preserving query but lacks supporting evidence in the text, its rank is heavily penalized.
+* **Entity Extraction:** The reading/extraction module is instructed to rely solely on page-grounded provenance. It acts as a strict filter, skipping extracted entities that explicitly contradict hard constraints.
+* **Final Scoring & Ranking:** In the post-retrieval stage, rows are ranked based on a combined evidence score. Results with strong, grounded evidence for both hard and soft constraints are elevated above those that merely exhibit broad topical relevance.
+
+### Evaluating Textual and Numeric Conditions
+
+The system natively supports both textual and quantitative constraints (e.g., `location = US`, `license != proprietary`, or `funding > 10M`). This is achieved through a combination of exact phrase matching, alias resolution, quantitative entity extraction, and operator-aware comparison.
+
+### Mitigating Standard IR Failure Modes
+
+This explicit pipeline mitigates a primary failure mode in open-domain retrieval (ODR): returning results that are highly relevant to the general topic but technically invalid against the user's specific conditions. By shifting constraint logic to the query understanding phase and enforcing it systematically through retrieval, extraction, and ranking, the system guarantees high-precision, logically verified results.
